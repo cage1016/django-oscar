@@ -8,6 +8,7 @@ from django.utils.translation import ugettext_lazy as _
 
 from oscar.core import prices
 from oscar.core.loading import get_class, get_model
+from oscar.core.compat import get_user_model
 
 from . import exceptions
 
@@ -20,6 +21,7 @@ ShippingAddress = get_model('order', 'ShippingAddress')
 BillingAddress = get_model('order', 'BillingAddress')
 UserAddress = get_model('address', 'UserAddress')
 
+User = get_user_model()
 
 class CheckoutSessionMixin(object):
     """
@@ -274,16 +276,45 @@ class CheckoutSessionMixin(object):
             shipping_charge = shipping_method.calculate(basket)
             total = self.get_order_totals(
                 basket, shipping_charge=shipping_charge)
-        submission = {
-            'user': self.request.user,
-            'basket': basket,
-            'shipping_address': shipping_address,
-            'shipping_method': shipping_method,
-            'shipping_charge': shipping_charge,
-            'billing_address': billing_address,
-            'order_total': total,
-            'order_kwargs': {},
-            'payment_kwargs': {}}
+        # submission = {
+        #     'user': self.request.user,
+        #     'basket': basket,
+        #     'shipping_address': shipping_address,
+        #     'shipping_method': shipping_method,
+        #     'shipping_charge': shipping_charge,
+        #     'billing_address': billing_address,
+        #     'order_total': total,
+        #     'order_kwargs': {},
+        #     'payment_kwargs': {}}
+        ########## OVERWRITE SUBMISSION FOR QNAPSHOP INAPP
+        if not self.request.jwt_data.has_key('user_email'):
+            submission = {
+                'user': self.request.user,
+                'basket': basket,
+                'shipping_address': shipping_address,
+                'shipping_method': shipping_method,
+                'shipping_charge': shipping_charge,
+                'billing_address': billing_address,
+                'order_total': total,
+                'order_kwargs': {},
+                'payment_kwargs': {}}
+
+        else:
+            req_email = self.request.jwt_data.get('user_email')
+            req_qpkg_id = self.request.jwt_data.get('client_id')
+
+            original_user = User.objects.filter(email=req_email).exclude(username__startswith=req_qpkg_id).get()
+            submission = {
+                'user': original_user,
+                'basket': basket,
+                'shipping_address': shipping_address,
+                'shipping_method': shipping_method,
+                'shipping_charge': shipping_charge,
+                'billing_address': billing_address,
+                'order_total': total,
+                'order_kwargs': {},
+                'payment_kwargs': {}}
+        ########## END OVERWRITE SUBMISSION FOR QNAPSHOP INAPP
 
         # If there is a billing address, add it to the payment kwargs as calls
         # to payment gateways generally require the billing address. Note, that
